@@ -303,7 +303,7 @@ def generate_msbuild_nps_msf_csharp_payload():
   options = {1: "windows/meterpreter/reverse_tcp",
              2: "windows/meterpreter/reverse_http",
              3: "windows/meterpreter/reverse_https",
-			 4: "Custom raw shellcode"
+	     4: "Custom raw shellcode"
     }
 
   # Generate payload
