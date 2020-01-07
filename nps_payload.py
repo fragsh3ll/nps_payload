@@ -310,7 +310,7 @@ def generate_msbuild_nps_msf_csharp_payload():
   try:
     msf_payload = input("\nSelect payload: ")
     if options.get(msf_payload) == "Custom raw shellcode":
-        custom_payload = raw_input("\n\tLocation of payload: ")
+        custom_payload = raw_input("\n\tLocation of payload (x86 only!): ")
         encode_csharppayload(custom_payload)
     else:
         generate_msfvenom_raw_payload(options.get(msf_payload))
